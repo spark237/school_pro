@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Traitz Tech — Attendance Tracker</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    /* ─── RESET & VARIABLES ──────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blue:   #1A3FD8;
+      --purple: #7B2FE0;
+      --grad:   linear-gradient(135deg, var(--blue) 0%, var(--purple) 100%);
+      --bg:     #0B0D17;
+      --card:   #111525;
+      --border: #1E2440;
+      --text:   #E8EBF8;
+      --muted:  #6B7299;
+      --green:  #00E5A0;
+      --red:    #FF4D6A;
+      --yellow: #FFD166;
+      --radius: 14px;
+      --font-head: 'Syne', sans-serif;
+      --font-mono: 'DM Mono', monospace;
+    }
+
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--font-mono);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ─── NOISE OVERLAY ──────────────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none; z-index: 0; opacity: 0.35;
+    }
+
+    /* ─── LAYOUT WRAPPERS ────────────────────────────────────────── */
+    .shell { display: flex; min-height: 100vh; position: relative; z-index: 1; }
+
+    /* ─── SIDEBAR NAV ────────────────────────────────────────────── */
+    .sidebar {
+      width: 240px; flex-shrink: 0;
+      background: var(--card);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      padding: 28px 0;
+      position: sticky; top: 0; height: 100vh;
+      transition: transform .3s;
+    }
+    .logo {
+      padding: 0 24px 28px;
+      border-bottom: 1px solid var(--border);
+    }
+    .logo-mark {
+      font-family: var(--font-head);
+      font-size: 1.4rem; font-weight: 800;
+      background: var(--grad); -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent; background-clip: text;
+      letter-spacing: -0.02em;
+    }
+    .logo-sub { font-size: 0.65rem; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; margin-top: 2px; }
+
+    .nav { flex: 1; padding: 20px 12px; display: flex; flex-direction: column; gap: 4px; }
+    .nav-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 14px; border-radius: 10px;
+      cursor: pointer; font-size: 0.82rem; font-weight: 400;
+      color: var(--muted); transition: all .2s; border: none;
+      background: transparent; width: 100%; text-align: left;
+    }
+    .nav-item svg { flex-shrink: 0; }
+    .nav-item:hover { background: var(--border); color: var(--text); }
+    .nav-item.active { background: rgba(26,63,216,.18); color: #90AAFF; }
+    .nav-item.active svg { color: var(--blue); }
+
+    .sidebar-footer {
+      padding: 20px 24px 0;
+      border-top: 1px solid var(--border);
+      font-size: 0.7rem; color: var(--muted);
+    }
+    .sidebar-footer strong { display: block; color: var(--text); font-size: 0.8rem; margin-bottom: 2px; }
+
+    /* ─── MAIN CONTENT ───────────────────────────────────────────── */
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* ─── TOP BAR ────────────────────────────────────────────────── */
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 32px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(11,13,23,.85); backdrop-filter: blur(12px);
+      position: sticky; top: 0; z-index: 50;
+    }
+    .page-title {
+      font-family: var(--font-head); font-size: 1.05rem; font-weight: 700;
+      color: var(--text);
+    }
+    .topbar-right { display: flex; align-items: center; gap: 14px; }
+    .live-badge {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 0.7rem; color: var(--green); letter-spacing: .08em;
+    }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.3)} }
+
+    #clock { font-size: 0.78rem; color: var(--muted); font-family: var(--font-mono); }
+
+    /* ─── CONTENT AREA ───────────────────────────────────────────── */
+    .content { padding: 28px 32px; flex: 1; overflow-y: auto; }
+
+    /* ─── PAGE SECTIONS ──────────────────────────────────────────── */
+    .page-section { display: none; animation: fadeUp .35s ease; }
+    .page-section.active { display: block; }
+    @keyframes fadeUp { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
+
+    /* ─── STAT CARDS ─────────────────────────────────────────────── */
+    .stats-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr));
+      gap: 16px; margin-bottom: 28px;
+    }
+    .stat-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px;
+      position: relative; overflow: hidden;
+      transition: border-color .2s, transform .2s;
+    }
+    .stat-card:hover { border-color: #2d3566; transform: translateY(-2px); }
+    .stat-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    }
+    .stat-card.blue::before { background: var(--grad); }
+    .stat-card.green::before { background: var(--green); }
+    .stat-card.red::before { background: var(--red); }
+    .stat-card.yellow::before { background: var(--yellow); }
+
+    .stat-label { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 10px; }
+    .stat-value { font-family: var(--font-head); font-size: 2rem; font-weight: 800; }
+    .stat-value.blue  { background: var(--grad); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .stat-value.green { color: var(--green); }
+    .stat-value.red   { color: var(--red); }
+    .stat-value.yellow{ color: var(--yellow); }
+    .stat-sub { font-size: 0.68rem; color: var(--muted); margin-top: 6px; }
+
+    /* ─── SECTION HEADER ─────────────────────────────────────────── */
+    .sec-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .sec-title { font-family: var(--font-head); font-size: 0.95rem; font-weight: 700; }
+    .sec-sub   { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+
+    /* ─── BTN ─────────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 9px 18px; border-radius: 9px; border: none;
+      cursor: pointer; font-family: var(--font-mono); font-size: 0.78rem;
+      font-weight: 500; transition: all .2s;
+    }
+    .btn-primary { background: var(--grad); color: #fff; }
+    .btn-primary:hover { opacity: .88; transform: translateY(-1px); }
+    .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    .btn-ghost:hover { border-color: #2d3566; color: var(--text); }
+    .btn-sm { padding: 6px 12px; font-size: 0.72rem; border-radius: 7px; }
+    .btn-danger { background: rgba(255,77,106,.12); color: var(--red); border: 1px solid rgba(255,77,106,.25); }
+    .btn-danger:hover { background: rgba(255,77,106,.22); }
+
+    /* ─── TABLE ──────────────────────────────────────────────────── */
+    .table-wrap {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      padding: 12px 18px; text-align: left;
+      font-size: 0.68rem; color: var(--muted); text-transform: uppercase;
+      letter-spacing: .1em; background: rgba(255,255,255,.025);
+      border-bottom: 1px solid var(--border);
+    }
+    tbody tr { border-bottom: 1px solid var(--border); transition: background .15s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: rgba(255,255,255,.025); }
+    tbody td { padding: 13px 18px; font-size: 0.8rem; color: var(--text); }
+
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 10px; border-radius: 20px; font-size: 0.68rem; font-weight: 500;
+    }
+    .badge-green  { background: rgba(0,229,160,.12); color: var(--green); }
+    .badge-red    { background: rgba(255,77,106,.12); color: var(--red); }
+    .badge-yellow { background: rgba(255,209,102,.12); color: var(--yellow); }
+    .badge-blue   { background: rgba(26,63,216,.18); color: #90AAFF; }
+
+    /* ─── FORM CARD ───────────────────────────────────────────────── */
+    .form-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 28px;
+    }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .form-group { display: flex; flex-direction: column; gap: 7px; }
+    .form-group.full { grid-column: 1 / -1; }
+    label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+    input, select, textarea {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 9px; padding: 10px 14px;
+      color: var(--text); font-family: var(--font-mono); font-size: 0.82rem;
+      transition: border-color .2s; outline: none; width: 100%;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--blue); }
+    select option { background: var(--card); }
+
+    /* ─── CHECK-IN HERO ───────────────────────────────────────────── */
+    .checkin-hero {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 36px;
+      text-align: center; margin-bottom: 24px;
+      position: relative; overflow: hidden;
+    }
+    .checkin-hero::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at 50% 0%, rgba(26,63,216,.12) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .checkin-time {
+      font-family: var(--font-head); font-size: 3.2rem; font-weight: 800;
+      background: var(--grad); -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent; background-clip: text;
+      letter-spacing: -0.03em; line-height: 1;
+    }
+    .checkin-date { color: var(--muted); font-size: 0.8rem; margin: 8px 0 28px; }
+    .checkin-btns { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+    .checkin-btn {
+      padding: 14px 32px; border-radius: 12px; border: none;
+      cursor: pointer; font-family: var(--font-head); font-size: 1rem; font-weight: 700;
+      letter-spacing: .04em; transition: all .25s;
+    }
+    .checkin-btn.in  { background: var(--grad); color: #fff; }
+    .checkin-btn.in:hover  { opacity: .85; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(26,63,216,.35); }
+    .checkin-btn.out { background: rgba(255,77,106,.12); color: var(--red); border: 1px solid rgba(255,77,106,.3); }
+    .checkin-btn.out:hover { background: rgba(255,77,106,.22); transform: translateY(-2px); }
+    .checkin-btn:disabled { opacity: .35; cursor: not-allowed; transform: none !important; }
+
+    .status-bar {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      font-size: 0.78rem; color: var(--muted); margin-top: 16px;
+    }
+    .status-indicator { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+    .status-indicator.in  { background: var(--green); animation: pulse 2s infinite; }
+    .status-indicator.out { background: var(--red); }
+
+    /* ─── TODAY TABLE ─────────────────────────────────────────────── */
+    .today-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+    /* ─── PROGRESS BAR ────────────────────────────────────────────── */
+    .prog-wrap { margin-bottom: 20px; }
+    .prog-label { display: flex; justify-content: space-between; margin-bottom: 7px; font-size: 0.75rem; }
+    .prog-track { background: var(--border); border-radius: 99px; height: 6px; overflow: hidden; }
+    .prog-fill  { height: 100%; border-radius: 99px; background: var(--grad); transition: width .6s ease; }
+
+    /* ─── MODAL ──────────────────────────────────────────────────── */
+    .overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.7); backdrop-filter: blur(6px);
+      z-index: 200; align-items: center; justify-content: center;
+    }
+    .overlay.show { display: flex; }
+    .modal {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 18px; padding: 32px; width: 100%; max-width: 480px;
+      animation: fadeUp .3s ease;
+    }
+    .modal-title { font-family: var(--font-head); font-size: 1.1rem; font-weight: 700; margin-bottom: 20px; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
+
+    /* ─── TOAST ──────────────────────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 28px; right: 28px;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 14px 20px;
+      font-size: 0.8rem; color: var(--text);
+      display: flex; align-items: center; gap: 10px;
+      transform: translateY(20px); opacity: 0;
+      transition: all .3s; z-index: 300; pointer-events: none;
+      min-width: 240px;
+    }
+    #toast.show { transform: translateY(0); opacity: 1; }
+    #toast .toast-icon { font-size: 1.1rem; }
+
+    /* ─── REPORTS PAGE ────────────────────────────────────────────── */
+    .report-filters {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px;
+      display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    .report-filters .form-group { flex: 1; min-width: 140px; }
+
+    /* ─── HAMBURGER ──────────────────────────────────────────────── */
+    .hamburger {
+      display: none; background: none; border: none; cursor: pointer;
+      color: var(--text); padding: 4px;
+    }
+
+    /* ─── SCROLLBAR ──────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+    /* ─── EMPTY STATE ─────────────────────────────────────────────── */
+    .empty { text-align: center; padding: 40px; color: var(--muted); font-size: 0.82rem; }
+    .empty-icon { font-size: 2.5rem; margin-bottom: 10px; }
+
+    /* ─── RESPONSIVE ─────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .sidebar { position: fixed; left: 0; top: 0; bottom: 0; z-index: 100; transform: translateX(-100%); }
+      .sidebar.open { transform: translateX(0); }
+      .hamburger { display: flex; }
+      .content { padding: 20px 16px; }
+      .form-grid { grid-template-columns: 1fr; }
+      .today-grid { grid-template-columns: 1fr; }
+      .stats-grid { grid-template-columns: 1fr 1fr; }
+      .topbar { padding: 14px 16px; }
+      .checkin-time { font-size: 2.2rem; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ── SIDEBAR ─────────────────────────────────────────────────── -->
+  <aside class="sidebar" id="sidebar">
+    <div class="logo">
+      <div class="logo-mark">{/} Traitz Tech</div>
+      <div class="logo-sub">Attendance System</div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item active" onclick="goTo('dashboard', this)">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </button>
+      <button class="nav-item" onclick="goTo('checkin', this)">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Check In / Out
+      </button>
+      <button class="nav-item" onclick="goTo('employees', this)">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Employees
+      </button>
+      <button class="nav-item" onclick="goTo('records', this)">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Records
+      </button>
+      <button class="nav-item" onclick="goTo('reports', this)">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Reports
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <strong id="sb-user">Admin</strong>
+      Traitz Tech · Bambili, NW Cameroon
+    </div>
+  </aside>
+
+  <!-- ── MAIN ────────────────────────────────────────────────────── -->
+  <div class="main">
+
+    <!-- TOP BAR -->
+    <header class="topbar">
+      <div style="display:flex;align-items:center;gap:14px">
+        <button class="hamburger" onclick="toggleSidebar()">
+          <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <span class="page-title" id="page-label">Dashboard</span>
+      </div>
+      <div class="topbar-right">
+        <div class="live-badge"><span class="dot"></span>Live</div>
+        <span id="clock"></span>
+      </div>
+    </header>
+
+    <!-- CONTENT -->
+    <div class="content">
+
+      <!-- ══ DASHBOARD ══════════════════════════════════════════════ -->
+      <div class="page-section active" id="sec-dashboard">
+
+        <div class="stats-grid">
+          <div class="stat-card blue">
+            <div class="stat-label">Total Employees</div>
+            <div class="stat-value blue" id="stat-total">0</div>
+            <div class="stat-sub">registered in system</div>
+          </div>
+          <div class="stat-card green">
+            <div class="stat-label">Present Today</div>
+            <div class="stat-value green" id="stat-present">0</div>
+            <div class="stat-sub">checked in today</div>
+          </div>
+          <div class="stat-card red">
+            <div class="stat-label">Absent Today</div>
+            <div class="stat-value red" id="stat-absent">0</div>
+            <div class="stat-sub">not yet checked in</div>
+          </div>
+          <div class="stat-card yellow">
+            <div class="stat-label">Attendance Rate</div>
+            <div class="stat-value yellow" id="stat-rate">0%</div>
+            <div class="stat-sub">today's percentage</div>
+          </div>
+        </div>
+
+        <div class="today-grid">
+          <!-- Attendance by person -->
+          <div>
+            <div class="sec-header">
+              <div>
+                <div class="sec-title">Today's Status</div>
+                <div class="sec-sub" id="today-datestr"></div>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Employee</th><th>Role</th><th>Check In</th><th>Status</th></tr>
+                </thead>
+                <tbody id="dash-tbody">
+                  <tr><td colspan="4"><div class="empty"><div class="empty-icon">👥</div>No employees yet. Add one first.</div></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Weekly summary -->
+          <div>
+            <div class="sec-header">
+              <div>
+                <div class="sec-title">Weekly Overview</div>
+                <div class="sec-sub">Attendance % by day</div>
+              </div>
+            </div>
+            <div class="form-card">
+              <div id="weekly-bars"></div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /dashboard -->
+
+
+      <!-- ══ CHECK IN / OUT ═════════════════════════════════════════ -->
+      <div class="page-section" id="sec-checkin">
+
+        <div class="checkin-hero">
+          <div class="checkin-time" id="ci-time"></div>
+          <div class="checkin-date" id="ci-date"></div>
+          <div style="margin-bottom:20px">
+            <div class="form-group" style="max-width:260px;margin:0 auto">
+              <label>Select Employee</label>
+              <select id="ci-select">
+                <option value="">— Choose employee —</option>
+              </select>
+            </div>
+          </div>
+          <div class="checkin-btns">
+            <button class="checkin-btn in" id="btn-in" onclick="doCheckIn()" disabled>✓ Check In</button>
+            <button class="checkin-btn out" id="btn-out" onclick="doCheckOut()" disabled>✕ Check Out</button>
+          </div>
+          <div class="status-bar">
+            <span class="status-indicator" id="ci-indicator"></span>
+            <span id="ci-status-text">Select an employee to begin</span>
+          </div>
+        </div>
+
+        <div class="sec-header" style="margin-top:8px">
+          <div class="sec-title">Today's Log</div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Employee</th><th>Check In</th><th>Check Out</th><th>Hours</th><th>Status</th></tr>
+            </thead>
+            <tbody id="log-tbody">
+              <tr><td colspan="5"><div class="empty"><div class="empty-icon">🕐</div>No check-ins today yet.</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div><!-- /checkin -->
+
+
+      <!-- ══ EMPLOYEES ══════════════════════════════════════════════ -->
+      <div class="page-section" id="sec-employees">
+
+        <div class="sec-header">
+          <div>
+            <div class="sec-title">Employee Register</div>
+            <div class="sec-sub">Manage all personnel records</div>
+          </div>
+          <button class="btn btn-primary" onclick="openAddModal()">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Employee
+          </button>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>#</th><th>Name</th><th>Role</th><th>Department</th><th>Email</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="emp-tbody">
+              <tr><td colspan="6"><div class="empty"><div class="empty-icon">👤</div>No employees added yet.</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div><!-- /employees -->
+
+
+      <!-- ══ RECORDS ════════════════════════════════════════════════ -->
+      <div class="page-section" id="sec-records">
+
+        <div class="sec-header">
+          <div>
+            <div class="sec-title">Attendance Records</div>
+            <div class="sec-sub">All historical check-in/out data</div>
+          </div>
+          <div style="display:flex;gap:10px">
+            <input type="date" id="rec-filter-date" style="width:160px" oninput="renderRecords()" />
+            <select id="rec-filter-emp" style="width:180px" onchange="renderRecords()">
+              <option value="">All Employees</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Employee</th><th>Date</th><th>Check In</th><th>Check Out</th><th>Hours</th><th>Status</th></tr>
+            </thead>
+            <tbody id="rec-tbody"></tbody>
+          </table>
+        </div>
+
+      </div><!-- /records -->
+
+
+      <!-- ══ REPORTS ════════════════════════════════════════════════ -->
+      <div class="page-section" id="sec-reports">
+
+        <div class="sec-header">
+          <div class="sec-title">Attendance Reports</div>
+          <div class="sec-sub">Summary statistics and percentages</div>
+        </div>
+
+        <div class="report-filters">
+          <div class="form-group">
+            <label>Employee</label>
+            <select id="rpt-emp">
+              <option value="">All Employees</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>From Date</label>
+            <input type="date" id="rpt-from" />
+          </div>
+          <div class="form-group">
+            <label>To Date</label>
+            <input type="date" id="rpt-to" />
+          </div>
+          <button class="btn btn-primary" onclick="generateReport()">Generate</button>
+        </div>
+
+        <div class="stats-grid" id="rpt-stats" style="margin-bottom:20px"></div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Employee</th><th>Days Present</th><th>Days Absent</th><th>Total Days</th><th>Rate</th><th>Status</th></tr>
+            </thead>
+            <tbody id="rpt-tbody">
+              <tr><td colspan="6"><div class="empty"><div class="empty-icon">📊</div>Set filters above and click Generate.</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div><!-- /reports -->
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /shell -->
+
+
+<!-- ── ADD EMPLOYEE MODAL ──────────────────────────────────────────── -->
+<div class="overlay" id="add-modal">
+  <div class="modal">
+    <div class="modal-title">Add New Employee</div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>First Name *</label>
+        <input id="emp-fname" type="text" placeholder="e.g. Fonguong" />
+      </div>
+      <div class="form-group">
+        <label>Last Name *</label>
+        <input id="emp-lname" type="text" placeholder="e.g. Edrick" />
+      </div>
+      <div class="form-group">
+        <label>Role / Title *</label>
+        <input id="emp-role" type="text" placeholder="e.g. Frontend Lead" />
+      </div>
+      <div class="form-group">
+        <label>Department</label>
+        <select id="emp-dept">
+          <option>Engineering</option>
+          <option>Marketing</option>
+          <option>Operations</option>
+          <option>Design</option>
+          <option>HR</option>
+          <option>Intern</option>
+        </select>
+      </div>
+      <div class="form-group full">
+        <label>Email</label>
+        <input id="emp-email" type="email" placeholder="name@traitztech.cm" />
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('add-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEmployee()">Save Employee</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── TOAST ───────────────────────────────────────────────────────── -->
+<div id="toast"><span class="toast-icon" id="toast-icon">✓</span><span id="toast-msg"></span></div>
+
+
+<script>
+/* ─────────────────────────────────────────────────────────────────
+   DATA STORE  (localStorage-backed)
+───────────────────────────────────────────────────────────────── */
+const DB = {
+  get employees() { return JSON.parse(localStorage.getItem('tt_emp') || '[]'); },
+  setEmployees(v) { localStorage.setItem('tt_emp', JSON.stringify(v)); },
+  get records() { return JSON.parse(localStorage.getItem('tt_rec') || '[]'); },
+  setRecords(v) { localStorage.setItem('tt_rec', JSON.stringify(v)); },
+};
+
+/* ─── HELPERS ────────────────────────────────────────────────── */
+const today = () => new Date().toISOString().slice(0,10);
+const fmt12 = (iso) => {
+  const d = new Date(iso);
+  const h = d.getHours(), m = String(d.getMinutes()).padStart(2,'0');
+  return `${h % 12 || 12}:${m} ${h >= 12 ? 'PM' : 'AM'}`;
+};
+const diffHrs = (a, b) => {
+  if (!a || !b) return '—';
+  const diff = (new Date(b) - new Date(a)) / 36e5;
+  return diff.toFixed(2) + 'h';
+};
+let toastTimer;
+function toast(msg, ok = true) {
+  const el = document.getElementById('toast');
+  document.getElementById('toast-msg').textContent = msg;
+  document.getElementById('toast-icon').textContent = ok ? '✓' : '⚠';
+  el.style.borderColor = ok ? 'rgba(0,229,160,.3)' : 'rgba(255,77,106,.3)';
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+/* ─── CLOCK ──────────────────────────────────────────────────── */
+function tick() {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2,'0');
+  const mm = String(now.getMinutes()).padStart(2,'0');
+  const ss = String(now.getSeconds()).padStart(2,'0');
+  const timeStr = `${hh}:${mm}:${ss}`;
+  const dateStr = now.toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  document.getElementById('clock').textContent = timeStr;
+  document.getElementById('ci-time').textContent = timeStr;
+  document.getElementById('ci-date').textContent = dateStr;
+  document.getElementById('today-datestr').textContent = dateStr;
+}
+setInterval(tick, 1000); tick();
+
+/* ─── NAVIGATION ──────────────────────────────────────────────── */
+const pages = { dashboard:'Dashboard', checkin:'Check In / Out', employees:'Employees', records:'Records', reports:'Reports' };
+function goTo(id, btn) {
+  document.querySelectorAll('.page-section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  document.getElementById('sec-'+id).classList.add('active');
+  if(btn) btn.classList.add('active');
+  document.getElementById('page-label').textContent = pages[id];
+  document.getElementById('sidebar').classList.remove('open');
+  if(id === 'dashboard') renderDashboard();
+  if(id === 'checkin')   renderCheckInLog();
+  if(id === 'employees') renderEmployees();
+  if(id === 'records')   { populateRecordFilters(); renderRecords(); }
+  if(id === 'reports')   populateReportFilters();
+}
+
+function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
+
+/* ─── MODALS ─────────────────────────────────────────────────── */
+function openAddModal() {
+  ['emp-fname','emp-lname','emp-role','emp-email'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('add-modal').classList.add('show');
+}
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => { if(e.target===o) o.classList.remove('show'); }));
+
+/* ─────────────────────────────────────────────────────────────────
+   EMPLOYEES
+───────────────────────────────────────────────────────────────── */
+function saveEmployee() {
+  const fname = document.getElementById('emp-fname').value.trim();
+  const lname = document.getElementById('emp-lname').value.trim();
+  const role  = document.getElementById('emp-role').value.trim();
+  if (!fname || !lname || !role) { toast('Please fill required fields.', false); return; }
+  const emps = DB.employees;
+  emps.push({
+    id: Date.now(),
+    name: `${fname} ${lname}`,
+    role,
+    dept: document.getElementById('emp-dept').value,
+    email: document.getElementById('emp-email').value.trim(),
+  });
+  DB.setEmployees(emps);
+  closeModal('add-modal');
+  toast(`${fname} ${lname} added successfully.`);
+  renderEmployees();
+  populateAllSelects();
+}
+
+function deleteEmployee(id) {
+  if (!confirm('Remove this employee? Their records will remain.')) return;
+  DB.setEmployees(DB.employees.filter(e => e.id !== id));
+  renderEmployees();
+  populateAllSelects();
+  toast('Employee removed.', false);
+}
+
+function renderEmployees() {
+  const emps = DB.employees;
+  const tbody = document.getElementById('emp-tbody');
+  if (!emps.length) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty"><div class="empty-icon">👤</div>No employees yet. Click "Add Employee".</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = emps.map((e,i) => `
+    <tr>
+      <td style="color:var(--muted)">${i+1}</td>
+      <td style="font-weight:500">${e.name}</td>
+      <td>${e.role}</td>
+      <td><span class="badge badge-blue">${e.dept}</span></td>
+      <td style="color:var(--muted)">${e.email || '—'}</td>
+      <td>
+        <button class="btn btn-danger btn-sm" onclick="deleteEmployee(${e.id})">Remove</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   CHECK IN / OUT
+───────────────────────────────────────────────────────────────── */
+const ciSelect = document.getElementById('ci-select');
+ciSelect.addEventListener('change', updateCIButtons);
+
+function updateCIButtons() {
+  const empId = parseInt(ciSelect.value);
+  const btnIn  = document.getElementById('btn-in');
+  const btnOut = document.getElementById('btn-out');
+  const ind    = document.getElementById('ci-indicator');
+  const txt    = document.getElementById('ci-status-text');
+
+  if (!empId) {
+    btnIn.disabled = btnOut.disabled = true;
+    ind.className = 'status-indicator';
+    txt.textContent = 'Select an employee to begin';
+    return;
+  }
+  const rec = getTodayRecord(empId);
+  if (!rec) {
+    btnIn.disabled = false; btnOut.disabled = true;
+    ind.className = 'status-indicator';
+    txt.textContent = 'Not checked in yet today';
+  } else if (!rec.checkOut) {
+    btnIn.disabled = true; btnOut.disabled = false;
+    ind.className = 'status-indicator in';
+    txt.textContent = `Checked in at ${fmt12(rec.checkIn)}`;
+  } else {
+    btnIn.disabled = btnOut.disabled = true;
+    ind.className = 'status-indicator out';
+    txt.textContent = `Done for today — ${diffHrs(rec.checkIn, rec.checkOut)} logged`;
+  }
+}
+
+function getTodayRecord(empId) {
+  return DB.records.find(r => r.empId === empId && r.date === today());
+}
+
+function doCheckIn() {
+  const empId = parseInt(ciSelect.value);
+  if (!empId) return;
+  const recs = DB.records;
+  recs.push({ id: Date.now(), empId, date: today(), checkIn: new Date().toISOString(), checkOut: null });
+  DB.setRecords(recs);
+  toast('Checked in successfully! ✓');
+  updateCIButtons();
+  renderCheckInLog();
+  updateDashStats();
+}
+
+function doCheckOut() {
+  const empId = parseInt(ciSelect.value);
+  if (!empId) return;
+  const recs = DB.records;
+  const rec = recs.find(r => r.empId === empId && r.date === today());
+  if (rec) { rec.checkOut = new Date().toISOString(); DB.setRecords(recs); }
+  toast('Checked out. See you tomorrow!');
+  updateCIButtons();
+  renderCheckInLog();
+}
+
+function renderCheckInLog() {
+  const recs = DB.records.filter(r => r.date === today());
+  const emps = DB.employees;
+  const tbody = document.getElementById('log-tbody');
+  if (!recs.length) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty"><div class="empty-icon">🕐</div>No check-ins today yet.</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = recs.map(r => {
+    const emp = emps.find(e => e.id === r.empId);
+    const hrs = diffHrs(r.checkIn, r.checkOut);
+    const status = !r.checkOut
+      ? `<span class="badge badge-green">● Present</span>`
+      : `<span class="badge badge-blue">✓ Complete</span>`;
+    return `<tr>
+      <td style="font-weight:500">${emp ? emp.name : 'Unknown'}</td>
+      <td>${fmt12(r.checkIn)}</td>
+      <td>${r.checkOut ? fmt12(r.checkOut) : '—'}</td>
+      <td>${hrs}</td>
+      <td>${status}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   RECORDS PAGE
+───────────────────────────────────────────────────────────────── */
+function populateRecordFilters() {
+  const sel = document.getElementById('rec-filter-emp');
+  const emps = DB.employees;
+  sel.innerHTML = '<option value="">All Employees</option>' +
+    emps.map(e => `<option value="${e.id}">${e.name}</option>`).join('');
+}
+
+function renderRecords() {
+  let recs = DB.records;
+  const dateF = document.getElementById('rec-filter-date').value;
+  const empF  = document.getElementById('rec-filter-emp').value;
+  if (dateF) recs = recs.filter(r => r.date === dateF);
+  if (empF)  recs = recs.filter(r => r.empId === parseInt(empF));
+  recs = [...recs].sort((a,b) => b.date.localeCompare(a.date) || b.checkIn.localeCompare(a.checkIn));
+  const emps = DB.employees;
+  const tbody = document.getElementById('rec-tbody');
+  if (!recs.length) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty"><div class="empty-icon">📂</div>No records found.</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = recs.map(r => {
+    const emp = emps.find(e => e.id === r.empId);
+    const status = !r.checkOut
+      ? `<span class="badge badge-green">● Present</span>`
+      : `<span class="badge badge-blue">✓ Complete</span>`;
+    return `<tr>
+      <td style="font-weight:500">${emp ? emp.name : 'Unknown'}</td>
+      <td>${r.date}</td>
+      <td>${fmt12(r.checkIn)}</td>
+      <td>${r.checkOut ? fmt12(r.checkOut) : '—'}</td>
+      <td>${diffHrs(r.checkIn, r.checkOut)}</td>
+      <td>${status}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   REPORTS PAGE
+───────────────────────────────────────────────────────────────── */
+function populateReportFilters() {
+  const sel = document.getElementById('rpt-emp');
+  const emps = DB.employees;
+  sel.innerHTML = '<option value="">All Employees</option>' +
+    emps.map(e => `<option value="${e.id}">${e.name}</option>`).join('');
+}
+
+function generateReport() {
+  const empF = document.getElementById('rpt-emp').value;
+  const from = document.getElementById('rpt-from').value;
+  const to   = document.getElementById('rpt-to').value;
+  let emps   = DB.employees;
+  let recs   = DB.records;
+  if (empF) emps = emps.filter(e => e.id === parseInt(empF));
+  if (from) recs = recs.filter(r => r.date >= from);
+  if (to)   recs = recs.filter(r => r.date <= to);
+
+  // Get unique dates in range
+  const dates = [...new Set(recs.map(r => r.date))];
+  const totalDays = dates.length || 1;
+
+  const rows = emps.map(emp => {
+    const empRecs = recs.filter(r => r.empId === emp.id);
+    const present = empRecs.length;
+    const absent  = Math.max(0, totalDays - present);
+    const rate    = Math.round((present / totalDays) * 100);
+    return { emp, present, absent, totalDays, rate };
+  });
+
+  const avgRate = rows.length ? Math.round(rows.reduce((s,r) => s+r.rate,0) / rows.length) : 0;
+
+  // stat cards
+  document.getElementById('rpt-stats').innerHTML = `
+    <div class="stat-card blue"><div class="stat-label">Period Days</div><div class="stat-value blue">${totalDays}</div></div>
+    <div class="stat-card green"><div class="stat-label">Avg Attendance</div><div class="stat-value green">${avgRate}%</div></div>
+    <div class="stat-card yellow"><div class="stat-label">Employees</div><div class="stat-value yellow">${rows.length}</div></div>
+  `;
+
+  const tbody = document.getElementById('rpt-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty">No data found for selected filters.</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(r => {
+    const color = r.rate >= 80 ? 'green' : r.rate >= 50 ? 'yellow' : 'red';
+    const label = r.rate >= 80 ? 'Good' : r.rate >= 50 ? 'At Risk' : 'Poor';
+    return `<tr>
+      <td style="font-weight:500">${r.emp.name}</td>
+      <td>${r.present}</td>
+      <td>${r.absent}</td>
+      <td>${r.totalDays}</td>
+      <td style="color:var(--${color})">${r.rate}%</td>
+      <td><span class="badge badge-${color}">${label}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   DASHBOARD
+───────────────────────────────────────────────────────────────── */
+function updateDashStats() {
+  const emps    = DB.employees;
+  const todayRecs = DB.records.filter(r => r.date === today());
+  const presentIds = [...new Set(todayRecs.map(r => r.empId))];
+  const total   = emps.length;
+  const present = presentIds.length;
+  const absent  = Math.max(0, total - present);
+  const rate    = total ? Math.round((present / total) * 100) : 0;
+  document.getElementById('stat-total').textContent   = total;
+  document.getElementById('stat-present').textContent = present;
+  document.getElementById('stat-absent').textContent  = absent;
+  document.getElementById('stat-rate').textContent    = rate + '%';
+}
+
+function renderDashboard() {
+  updateDashStats();
+  const emps = DB.employees;
+  const todayRecs = DB.records.filter(r => r.date === today());
+  const tbody = document.getElementById('dash-tbody');
+
+  if (!emps.length) {
+    tbody.innerHTML = `<tr><td colspan="4"><div class="empty"><div class="empty-icon">👥</div>Add employees first.</div></td></tr>`;
+  } else {
+    tbody.innerHTML = emps.map(emp => {
+      const rec = todayRecs.find(r => r.empId === emp.id);
+      const status = !rec
+        ? `<span class="badge badge-red">Absent</span>`
+        : !rec.checkOut
+          ? `<span class="badge badge-green">● Present</span>`
+          : `<span class="badge badge-blue">✓ Done</span>`;
+      const ci = rec ? fmt12(rec.checkIn) : '—';
+      return `<tr>
+        <td style="font-weight:500">${emp.name}</td>
+        <td style="color:var(--muted)">${emp.role}</td>
+        <td>${ci}</td>
+        <td>${status}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // weekly bars
+  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const now  = new Date();
+  const dayOfWeek = (now.getDay() + 6) % 7; // 0=Mon
+  const weekDates = days.map((_,i) => {
+    const d = new Date(now);
+    d.setDate(now.getDate() - dayOfWeek + i);
+    return d.toISOString().slice(0,10);
+  });
+  const total = emps.length || 1;
+  const barsHTML = days.map((d,i) => {
+    const dateStr = weekDates[i];
+    const recs = DB.records.filter(r => r.date === dateStr);
+    const uniq  = new Set(recs.map(r => r.empId)).size;
+    const pct   = Math.round((uniq / total) * 100);
+    const isToday = dateStr === today();
+    return `
+      <div class="prog-wrap">
+        <div class="prog-label">
+          <span style="color:${isToday ? 'var(--text)' : 'var(--muted)'}">${d}${isToday ? ' (today)' : ''}</span>
+          <span style="color:var(--muted)">${pct}%</span>
+        </div>
+        <div class="prog-track">
+          <div class="prog-fill" style="width:${pct}%;${isToday ? 'background:var(--grad)' : 'background:var(--border)'}"></div>
+        </div>
+      </div>`;
+  }).join('');
+  document.getElementById('weekly-bars').innerHTML = barsHTML;
+  // trigger animation
+  setTimeout(() => {
+    document.querySelectorAll('.prog-fill').forEach(el => el.style.width = el.style.width);
+  }, 50);
+}
+
+/* ─── SELECT POPULATORS ──────────────────────────────────────── */
+function populateAllSelects() {
+  const emps = DB.employees;
+  const opts = '<option value="">— Choose employee —</option>' + emps.map(e => `<option value="${e.id}">${e.name}</option>`).join('');
+  document.getElementById('ci-select').innerHTML = opts;
+  updateCIButtons();
+}
+
+/* ─── INIT ────────────────────────────────────────────────────── */
+populateAllSelects();
+renderDashboard();
+</script>
+</body>
+</html>
